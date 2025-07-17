@@ -124,6 +124,8 @@ def mmd_permutation_test(Z, Z_fea, n_samples, num_permutations=100, kernel="deep
 
     if kernel == "deep":
         c_epsilon, b_q, b_phi = params
+    if "com" in kernel:
+        c_epsilon, b_q, b_phi = params
 
     # Compute the pairwise distance matrix for the full data
     pairwise_matrix = torch_distance(Z, Z, norm=2, is_squared=True)
@@ -133,7 +135,23 @@ def mmd_permutation_test(Z, Z_fea, n_samples, num_permutations=100, kernel="deep
     K_q = gaussian_kernel(pairwise_matrix, b_q)
     K_phi = gaussian_kernel(pairwise_matrix_f, b_phi)
     K = (1 - epsilon) * K_phi * K_q + epsilon * K_q
-
+    
+    if kernel == "com1":
+        b_k = torch.median(pairwise_matrix)
+        K_num = gaussian_kernel(pairwise_matrix, b_k)
+        K_den = K
+        K = K_num / K_den
+    elif kernel == "com2":
+        b_k = torch.median(pairwise_matrix)
+        K_num = K
+        K_den = gaussian_kernel(pairwise_matrix, b_k)
+        K = K_num / K_den
+    elif kernel == "com3":
+        b_k = torch.median(pairwise_matrix)
+        K_org = gaussian_kernel(pairwise_matrix, b_k)
+        K_phi = K
+        K = torch.max(K_org, K_phi) / torch.min(K_org, K_phi)
+        
     # Compute the observed MMD
     observed_mmd = mmd_u(K, n_samples, n_samples)
     # print("Observed MMD:", observed_mmd)
@@ -150,9 +168,17 @@ def mmd_permutation_test(Z, Z_fea, n_samples, num_permutations=100, kernel="deep
         perm_mmd = mmd_u(K_perm, n_samples, n_samples)
         # print("Permuted MMD:", perm_mmd)
         mmd_ps.append(perm_mmd)
-        if perm_mmd >= observed_mmd:
-            count += 1
+
+        if kernel == "com1" or kernel == "com3":
+            if perm_mmd <= observed_mmd:
+                count += 1
+        else:
+            if perm_mmd >= observed_mmd:
+                count += 1
 
     p_value = count / num_permutations
     
-    return p_value, mmd_ps[np.int64(num_permutations*0.95)], observed_mmd
+    if kernel == "com1" or kernel == "com3":
+        return p_value, mmd_ps[np.int64(num_permutations*0.05)], observed_mmd
+    else:
+        return p_value, mmd_ps[np.int64(num_permutations*0.95)], observed_mmd

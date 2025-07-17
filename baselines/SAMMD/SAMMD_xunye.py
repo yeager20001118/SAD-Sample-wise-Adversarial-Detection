@@ -25,7 +25,7 @@ parser.add_argument("--batch_size", type=int, default=100, help="size of the bat
 parser.add_argument("--lr", type=float, default=0.0002, help="adam: learning rate for C2STs")
 parser.add_argument("--img_size", type=int, default=64, help="size of each image dimension")
 parser.add_argument("--channels", type=int, default=3, help="number of image channels")
-parser.add_argument("--n", type=int, default=500, help="number of samples in one set")
+parser.add_argument("--n", type=int, default=10, help="number of samples in one set")
 opt = parser.parse_args()
 print(opt)
 dtype = torch.float
@@ -94,8 +94,8 @@ with torch.no_grad():
 Q_features = torch.cat(outputs, dim=0) # dim: (10000, 10)
 
 # uncomment if type I error 
-P = Q
-P_features = Q_features
+# P = Q
+# P_features = Q_features
 
 np.random.seed(10086)
 ind_Q = np.random.choice(len(Q_features), len(Q_features), replace=False) # shuffle Q
@@ -184,7 +184,7 @@ for kk in range(K):
 
         Z_te = torch.cat([P_te_N1, Q_te_N1], dim=0)
         Z_fea_te = torch.cat([P_fea_te_N1, Q_fea_te_N1], dim=0)
-        p_value, th, mmd = mmd_permutation_test(Z_te, Z_fea_te, N1, num_permutations=100, kernel="deep", params=[c_epsilon, b_q, b_phi])
+        p_value, th, mmd = mmd_permutation_test(Z_te, Z_fea_te, N1, num_permutations=100, kernel="com2", params=[c_epsilon, b_q, b_phi])
         # print(f"p_value: {p_value}, th: {th}, mmd: {mmd}")
         
         H_adaptive[k] = p_value < alpha
