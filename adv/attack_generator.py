@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 import torchvision
 from torch.autograd import Variable
+
 def cwloss(output, target,confidence=50, num_classes=10):
     target = target.data
     target_onehot = torch.zeros(target.size() + (num_classes,))

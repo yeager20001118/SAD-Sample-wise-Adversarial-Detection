@@ -3,3 +3,5 @@
 **/*data*/
 *.pth
 *.txt
+*.slurm
+*.out
