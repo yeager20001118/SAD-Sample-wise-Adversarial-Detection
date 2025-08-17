@@ -50,8 +50,8 @@ ckpt = "net_150.pth"
 model_path = os.path.join(adv_path, model_arch + "_ckpt", ckpt)
 # pre-settings for adv attack data
 dataset_name = 'cifar10'
-attk_method = 'pgd'
-n_steps = 5
+attk_method = 'fgsm'
+n_steps = 20
 penalty = "linf"
 
 model = load_model(model_arch, model_path)

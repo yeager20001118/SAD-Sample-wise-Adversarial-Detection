@@ -14,7 +14,7 @@ parser = argparse.ArgumentParser(description='PyTorch White-box Adversarial Atta
 parser.add_argument('--net', type=str, default="resnet18", help="decide which network to use,choose from resnet18, resnet34")
 parser.add_argument('--dataset', type=str, default="cifar10", help="choose from cifar10,svhn")
 parser.add_argument('--drop_rate', type=float,default=0.0, help='WRN drop rate')
-parser.add_argument('--model_path', default='./Res18_model/net_150.pth', help='model for white-box attack evaluation')
+parser.add_argument('--model_path', default='./Res18_ckpt/net_150.pth', help='model for white-box attack evaluation')
 
 # Modification: adding configurations of adversarial attacks
 parser.add_argument('--epsilon', default=8, type=int, help='perturbation')
@@ -40,10 +40,10 @@ def main():
     print('==> Load Model')
     if args.net == "resnet18":
         model = ResNet18().cuda()
-        net = "RN18"
+        net = "Res18"
     if args.net == "resnet34":
         model = ResNet34().cuda()
-        net = "RN34"
+        net = "Res34"
 
     ckpt = torch.load(args.model_path)
     model.load_state_dict(ckpt)

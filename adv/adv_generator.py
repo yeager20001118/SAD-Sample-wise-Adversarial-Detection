@@ -15,7 +15,7 @@ parser.add_argument('--net', type=str, default="resnet18", help="decide which ne
 parser.add_argument('--dataset', type=str, default="cifar10", help="choose from cifar10,svhn")
 parser.add_argument('--drop_rate', type=float,default=0.0, help='WRN drop rate')
 parser.add_argument('--attack_method', type=str,default="dat", help = "choose form: dat and trades")
-parser.add_argument('--model_path', default='./Res18_model/net_150.pth', help='model for white-box attack evaluation')
+parser.add_argument('--model_path', default='./Res18_ckpt/net_150.pth', help='model for white-box attack evaluation')
 parser.add_argument('--method',type=str,default='dat',help='select attack setting following DAT or TRADES')
 
 args = parser.parse_args()
@@ -48,7 +48,7 @@ model.eval()
 print('==> Generate adversarial sample')
 
 
-PATH_DATA='./Adv_data/cifar10/RN18'
+PATH_DATA='./Adv_data/cifar10/Res18'
 
 os.makedirs(PATH_DATA, exist_ok=True)
 

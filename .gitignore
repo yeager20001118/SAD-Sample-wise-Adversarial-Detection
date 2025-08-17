@@ -1,7 +1,11 @@
 ./dataset
 ./pretrained
 **/*data*/
+**/*Results*/
+**/*Results*
 *.pth
 *.txt
 *.slurm
 *.out
+*.npy
+__pycache__/

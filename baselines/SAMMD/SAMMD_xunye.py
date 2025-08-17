@@ -46,12 +46,12 @@ Results = np.zeros([K])
 
 # Extract semantic features from trained model
 model = semantic_ResNet18().cuda()
-ckpt = torch.load('/data/gpfs/projects/punim2112/SAD-Sample-wise-Adversarial-Detection/baselines/SAMMD/adv/Res18_model/net_150.pth') # download targeted model
+ckpt = torch.load('/data/gpfs/projects/punim2112/SAD-Sample-wise-Adversarial-Detection/adv/Res18_ckpt/net_150.pth') # download targeted model
 model.load_state_dict(ckpt)
 model.eval()    
 
 transform_test = transforms.Compose([transforms.ToTensor(),])
-testset = datasets.CIFAR10(root='/data/gpfs/projects/punim2112/SAD-Sample-wise-Adversarial-Detection/baselines/SAMMD/data/cifar10', train=False, download=True, transform=transform_test)
+testset = datasets.CIFAR10(root='/data/gpfs/projects/punim2112/SAD-Sample-wise-Adversarial-Detection/data/cifar10', train=False, download=True, transform=transform_test)
 test_loader = torch.utils.data.DataLoader(testset, batch_size=10000, shuffle=True, num_workers=0) # shuffle P
 
 for i, (imgs, labels) in enumerate(test_loader):
@@ -76,7 +76,7 @@ with torch.no_grad():
 P_features = torch.cat(outputs, dim=0) # dim: (10000, 10)
 
 # adv attack data
-Q = np.load("/data/gpfs/projects/punim2112/SAD-Sample-wise-Adversarial-Detection/baselines/SAMMD/adv/Adv_data/cifar10/RN18/Adv_cifar_PGD20_eps8.npy")
+Q = np.load("/data/gpfs/projects/punim2112/SAD-Sample-wise-Adversarial-Detection/adv/Adv_data/cifar10/Res18/Adv_cifar_PGD20_eps8.npy")
 Q = torch.from_numpy(Q).float().cuda()
 n_Q = Q.shape[0]
 
@@ -96,6 +96,10 @@ Q_features = torch.cat(outputs, dim=0) # dim: (10000, 10)
 # # uncomment if type I error
 # P = Q
 # P_features = Q_features
+
+# print(P.shape, Q.shape, P_features.shape, Q_features.shape)
+# import sys
+# sys.exit()
 
 np.random.seed(10086)
 ind_Q = np.random.choice(len(Q_features), len(Q_features), replace=False) # shuffle Q

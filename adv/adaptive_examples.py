@@ -18,7 +18,7 @@ parser.add_argument('--depth', type=int, default=34, help='WRN depth')
 parser.add_argument('--width_factor', type=int, default=10,help='WRN width factor')
 parser.add_argument('--drop_rate', type=float,default=0.0, help='WRN drop rate')
 parser.add_argument('--attack_method', type=str,default="dat", help = "choose form: dat and trades")
-parser.add_argument('--model', default='./Res18_model/net_150.pth', help='model for white-box attack evaluation')
+parser.add_argument('--model', default='./Res18_ckpt/net_150.pth', help='model for white-box attack evaluation')
 parser.add_argument('--method',type=str,default='dat',help='select attack setting following DAT or TRADES')
 
 args = parser.parse_args()
@@ -57,7 +57,7 @@ model_semantic.eval()
 print('==> Generate adaptive sample')
 
 
-PATH_DATA='./Adv_data/cifar10/RN18'
+PATH_DATA='./Adv_data/cifar10/Res18'
 
 
 X_adv=attack.co_adaptive_generate(model, model_semantic, test_loader, perturb_steps=20, epsilon=8./255, step_size=8./255 / 10,loss_fn="cent", category="Madry", rand_init=True)

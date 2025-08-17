@@ -2,7 +2,26 @@ import torch
 from torch.utils.data import TensorDataset, DataLoader
 import numpy as np
 import sys
+import builtins
 
+# UDF authored by Alex, Jiacheng, Xunye, Yiyi, Zesheng, and Zhijian
+builtins.IS_LOG=True
+def log(*args, sep=True, **kwargs):
+    if builtins.IS_LOG:
+        if sep:
+            msg = " ".join(map(str, args))
+            total_len = 30
+            msg_len = len(msg)
+            if msg_len >= total_len:
+                print(msg)
+            else:
+                eq_len = total_len - msg_len
+                left = eq_len // 2
+                right = eq_len - left
+                print(f"{'=' * left}{msg}{'=' * right}")
+        else:
+            print(*args, **kwargs)
+        
 def Pdist2(x, y):
     """compute the paired distance between x and y."""
     x_norm = (x ** 2).sum(1).view(-1, 1)
@@ -159,7 +178,7 @@ def deep_objective(pairwise_matrix_f, pairwise_matrix, epsilon, b_q, b_phi, n_sa
 
     return stats, mmd_value
     
-def mmd_permutation_test(Z, Z_fea, n_samples, num_permutations=100, kernel="deep", params=[1.0]):
+def mmd_permutation_test(Z, Z_fea, n_samples, n_per=100, kernel="deep", params=[1.0]):
 
     if kernel == "deep":
         c_epsilon, b_q, b_phi = params
@@ -209,7 +228,7 @@ def mmd_permutation_test(Z, Z_fea, n_samples, num_permutations=100, kernel="deep
     count = 0
     # For each permutation, simply reorder the precomputed kernel matrix
     mmd_ps = []
-    for _ in range(num_permutations):
+    for _ in range(n_per):
         perm = torch.randperm(Z.size(0), device=Z.device)
         # Use the permutation to index into K:
         K_perm = K[perm][:, perm]
@@ -226,19 +245,19 @@ def mmd_permutation_test(Z, Z_fea, n_samples, num_permutations=100, kernel="deep
             if perm_mmd >= observed_mmd:
                 count += 1
 
-    p_value = count / num_permutations
+    p_value = count / n_per
     
     if kernel == "com1" or kernel == "com3":
-        return p_value, mmd_ps[np.int64(num_permutations*0.05)], observed_mmd
+        return p_value, mmd_ps[np.int64(n_per*0.05)], observed_mmd
     else:
-        return p_value, mmd_ps[np.int64(num_permutations*0.95)], observed_mmd
+        return p_value, mmd_ps[np.int64(n_per*0.95)], observed_mmd
 
-def mmd_permutation_test3(Z, Z_fea, n_samples, num_permutations=100, kernel="deep", params=[1.0]):
+def mmd_permutation_test3(Z, Z_fea, n_samples, n_per=100, kernel="deep", params=[1.0]):
 
     if kernel == "deep":
-        c_epsilon, b_q, b_phi = params
+        b_q, b_phi = params
     if "com" in kernel:
-        c_epsilon, b_q, b_phi = params
+        b_q, b_phi = params
 
     # Compute the pairwise distance matrix for the full data
     pairwise_matrix = torch_distance(Z, Z, norm=2, is_squared=True)
@@ -287,7 +306,7 @@ def mmd_permutation_test3(Z, Z_fea, n_samples, num_permutations=100, kernel="dee
     count = 0
     # For each permutation, simply reorder the precomputed kernel matrix
     mmd_ps = []
-    for _ in range(num_permutations):
+    for _ in range(n_per):
         perm = torch.randperm(Z.size(0), device=Z.device)
         # Use the permutation to index into K:
         K_perm = K[perm][:, perm]
@@ -304,13 +323,13 @@ def mmd_permutation_test3(Z, Z_fea, n_samples, num_permutations=100, kernel="dee
         if perm_mmd >= observed_mmd:
             count += 1
 
-    p_value = count / num_permutations
+    p_value = count / n_per
     
     if torch.isnan(observed_mmd):
         print('NAN')
         sys.exit(1)
     
-    return p_value, torch.sort(torch.tensor(mmd_ps))[0][int(num_permutations * 0.95)], observed_mmd
+    return p_value, torch.sort(torch.tensor(mmd_ps))[0][int(n_per * 0.95)], observed_mmd
 
 def mmd_permutation_test2(Z, Z_fea, n_samples, num_permutations=100, kernel="deep", params=[1.0]):
 

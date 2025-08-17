@@ -75,7 +75,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # parameter setting
 parser = argparse.ArgumentParser(description='PyTorch CIFAR10 Training')
-parser.add_argument('--outf', default='./Res18_model', help='folder to output images and model checkpoints') #The save path of the output model
+parser.add_argument('--outf', default='./Res18_ckpt', help='folder to output images and model checkpoints') #The save path of the output model
 args = parser.parse_args()
 
 # Hyperparameter setting
