@@ -16,23 +16,23 @@ print("Logging is {}".format("on" if builtins.IS_LOG else "off"))
 parser = argparse.ArgumentParser()
 # parser.add_argument('--attk_method', type=str, default='pgd', help='adversarial attack method')
 # parameters to generate data
-parser.add_argument('--check', default=1, help='check reject adv (1), reject clean(0)')
-parser.add_argument('--N1', default=5, help='number of samples in P')
-parser.add_argument('--epsilon', default=[1,2,4,8], help='epsilon')
-parser.add_argument('--rs', default=[819,819,819,819], help='random seed')
+parser.add_argument('--check', default=1, help='check reject adv (1), reject clean(0)', type=int)
+parser.add_argument('--N1', default=5, help='number of samples in P', type=int)
+parser.add_argument('--epsilon', default=[1,2,4,8], help='epsilon', type=list)
+parser.add_argument('--rs', default=[819,819,819,819], help='random seed', type=list)
 
 # parameters to conduct exp
-parser.add_argument('--n_exp', default=10, help='number of experiments')
-parser.add_argument('--n_test', default=100, help='number of test times')
-parser.add_argument('--n_per', default=1000, help='number of permutations')
-parser.add_argument('--alpha', default=0.05, help='probability of not reject adv')
+parser.add_argument('--n_exp', default=10, help='number of experiments', type=int)
+parser.add_argument('--n_test', default=100, help='number of test times', type=int)
+parser.add_argument('--n_per', default=1000, help='number of permutations', type=int)
+parser.add_argument('--alpha', default=0.05, help='probability of not reject adv', type=float)
 
 # parameters to train SAD
-parser.add_argument('--kernel', default="com3", help='kernel type')
-parser.add_argument('--N_epoch', default=0, help='epochs to update kernel params')
-parser.add_argument('--batch_size', default=128, help='batch size')
-parser.add_argument('--lr', default=0.0005, help='learning rate')
-parser.add_argument('--ref', default="adv", help='reference data, adv or org')
+parser.add_argument('--kernel', default="com3", help='kernel type', type=str)
+parser.add_argument('--N_epoch', default=0, help='epochs to update kernel params', type=int)
+parser.add_argument('--batch_size', default=128, help='batch size', type=int)
+parser.add_argument('--lr', default=0.0005, help='learning rate', type=float)
+parser.add_argument('--ref', default="adv", help='reference data, adv or org', type=str)
 
 args = parser.parse_args()
 

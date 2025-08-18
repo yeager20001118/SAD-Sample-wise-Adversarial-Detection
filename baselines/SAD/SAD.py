@@ -25,6 +25,7 @@ def train_SAD(path, N1, rs, check, model, N_epoch, lr, ref):
     np.random.seed(rs)
     torch.manual_seed(rs)
 
+    log("path: ", path)
     (P, Q), (P_rep, Q_rep) = load_data(path, N1, rs, check, model, ref = ref, is_test=False)
     Dxy_org = Pdist2(P, Q)
     Dxy_rep = Pdist2(P_rep, Q_rep)
@@ -83,7 +84,7 @@ def SAD(path, N1, rs, check, model_params, kernel, n_test, n_per, alpha, ref):
         Q_te = Q[Q_idx]
         Q_rep_te = Q_rep[Q_idx]
 
-        log("P_te.shape: {}, P_rep_te.shape: {}, Q_te.shape: {}, Q_rep_te.shape: {}".format(P_te.shape, P_rep_te.shape, Q_te.shape, Q_rep_te.shape))
+        # log("P_te.shape: {}, P_rep_te.shape: {}, Q_te.shape: {}, Q_rep_te.shape: {}".format(P_te.shape, P_rep_te.shape, Q_te.shape, Q_rep_te.shape))
 
         Z_te = torch.cat([P_te, Q_te], dim=0)
         Z_rep_te = torch.cat([P_rep_te, Q_rep_te], dim=0)
