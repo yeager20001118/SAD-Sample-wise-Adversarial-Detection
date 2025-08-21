@@ -8,6 +8,8 @@ import builtins
 sys.path.append('/data/gpfs/projects/punim2112/SAD-Sample-wise-Adversarial-Detection')
 from models import *
 from exp.dataloader import *
+from baselines.EPS_AD.EPS_AD import train_EPS_AD, EPS_AD
+from baselines.SAMMD.SAMMD import train_SAMMD, SAMMD
 from baselines.SAD.SAD import train_SAD, SAD
 
 # builtins.IS_LOG = False  # mute the log
@@ -35,11 +37,10 @@ parser.add_argument('--lr', default=0.0005, help='learning rate', type=float)
 parser.add_argument('--ref', default="adv", help='reference data, adv or org', type=str)
 
 # parameters to train EPS-AD
-parser.add_argument('--kernel', default="eps_ad", help='kernel type (kept for compatibility)', type=str)
-parser.add_argument('--N_epoch', default=200, help='epochs to train EPS-AD discriminator', type=int)
-parser.add_argument('--batch_size', default=128, help='batch size', type=int)
-parser.add_argument('--lr', default=0.0002, help='learning rate', type=float)
-parser.add_argument('--ref', default="adv", help='reference data, adv or org', type=str)
+parser.add_argument('--kernel_epsad', default="eps_ad", help='kernel type (kept for compatibility)', type=str)
+parser.add_argument('--N_epoch_epsad', default=200, help='epochs to train EPS-AD discriminator', type=int)
+parser.add_argument('--batch_size_epsad', default=128, help='batch size', type=int)
+parser.add_argument('--lr_epsad', default=0.0002, help='learning rate', type=float)
 
 # EPS-AD specific parameters
 parser.add_argument('--feature_dim', default=300, help='feature dimension for discriminator', type=int)
@@ -49,8 +50,10 @@ parser.add_argument('--epsilon_init', default=2, help='initial epsilon value', t
 
 args = parser.parse_args()
 
-Results = np.zeros((3, args.n_exp))
+Results = np.zeros((5, args.n_exp))
 
+H_EPS_AD = np.zeros(args.n_test)
+H_SAMMD = np.zeros(args.n_test)
 H_SAD_com1 = np.zeros(args.n_test)
 H_SAD_com2 = np.zeros(args.n_test)
 H_SAD_com3 = np.zeros(args.n_test)
@@ -73,23 +76,32 @@ exp_path = "/data/gpfs/projects/punim2112/SAD-Sample-wise-Adversarial-Detection/
 for i in range(len(args.epsilon)):
     builtins.DATALOG_COUNT = 0
     path = os.path.join(adv_path, "Adv_data", dataset_name, model_arch, f"Adv_{dataset_name}_{attk_method}_{n_steps}_eps{args.epsilon[i]}_{penalty}.npy")
-    params = train_SAD(path, args.N1, args.rs[i], args.check, model, args.N_epoch, args.lr, args.ref)
-    file_name = args.ref+'_'+dataset_name+'_'+attk_method+'_'+str(n_steps)+'_eps'+str(args.epsilon[i])+'_'+penalty+'_N'+str(args.N1)
 
-    params_epsad = train_EPS_AD(path, args.N1, args.rs[i], args.check, model, args.N_epoch, args.lr, 
+    params_epsad = train_EPS_AD(path, args.N1, args.rs[i], args.check, model, args.N_epoch_epsad, args.lr_epsad, 
                          dataset=dataset_name, feature_dim=args.feature_dim, 
                          sigma0_init=args.sigma0_init, sigma_init=args.sigma_init, 
                          epsilon_init=args.epsilon_init, ref=args.ref)
-    for kk in range(args.n_exp):
-        # H_SAD_com1, _, _, _ = SAD(path, args.N1, kk*args.n_exp+args.rs[i], args.check, [model] + params, "com1", args.n_test, args.n_per, args.alpha, args.ref)
+    params_sammd = train_SAMMD(path, args.N1, args.rs[i], args.check, model, args.N_epoch, args.lr, args.ref)
+    params = train_SAD(path, args.N1, args.rs[i], args.check, model, args.N_epoch, args.lr, args.ref)
 
-        # H_SAD_com2, _, _, _ = SAD(path, args.N1, kk*args.n_exp+args.rs[i], args.check, [model] + params, "com2", args.n_test, args.n_per, args.alpha, args.ref)
+    file_name = args.ref+'_'+dataset_name+'_'+attk_method+'_'+str(n_steps)+'_eps'+str(args.epsilon[i])+'_'+penalty+'_N'+str(args.N1)
+    for kk in range(args.n_exp):
+
+        H_EPS_AD, _, _, _ = EPS_AD(path, args.N1, kk*args.n_exp+args.rs[i], args.check, params_epsad, args.kernel_epsad, args.n_test, args.n_per, args.alpha, args.ref, model)
+
+        H_SAMMD, _, _, _ = SAMMD(path, args.N1, kk*args.n_exp+args.rs[i], args.check, [model] + params_sammd, args.n_test, args.n_per, args.alpha, args.ref)
+        
+        H_SAD_com1, _, _, _ = SAD(path, args.N1, kk*args.n_exp+args.rs[i], args.check, [model] + params, "com1", args.n_test, args.n_per, args.alpha, args.ref)
+
+        H_SAD_com2, _, _, _ = SAD(path, args.N1, kk*args.n_exp+args.rs[i], args.check, [model] + params, "com2", args.n_test, args.n_per, args.alpha, args.ref)
 
         H_SAD_com3, _, _, _ = SAD(path, args.N1, kk*args.n_exp+args.rs[i], args.check, [model] + params, "com3", args.n_test, args.n_per, args.alpha, args.ref)
 
-        Results[0, kk] = np.mean(H_SAD_com1)
-        Results[1, kk] = np.mean(H_SAD_com2)
-        Results[2, kk] = np.mean(H_SAD_com3)
+        Results[0, kk] = np.mean(H_EPS_AD)
+        Results[1, kk] = np.mean(H_SAMMD)
+        Results[2, kk] = np.mean(H_SAD_com1)
+        Results[3, kk] = np.mean(H_SAD_com2)
+        Results[4, kk] = np.mean(H_SAD_com3)
 
         if args.check == 1:
             os.makedirs(os.path.join(exp_path, "Results", "test_power", str(args.alpha)), exist_ok=True)
@@ -97,7 +109,7 @@ for i in range(len(args.epsilon)):
         if args.check == 0:
             os.makedirs(os.path.join(exp_path, "Results", "typeI_error", str(args.alpha)), exist_ok=True)
             np.savetxt(os.path.join(exp_path, "Results", "typeI_error", str(args.alpha), file_name), Results, fmt='%.3f')
-        break
+        # break
     Final_results = np.zeros((Results.shape[0], 2))
     for j in range(Results.shape[0]):
         Final_results[j, 0] = np.mean(Results[j, :])
@@ -114,7 +126,9 @@ for i in range(len(args.epsilon)):
             np.savetxt(f, Final_results, fmt='%.3f')
         print(f"TypeI check of {args.ref}-ref {dataset_name} under {attk_method} with eps={args.epsilon[i]}, penalty={penalty} and N={args.N1} is done")
 
-    print("SAD-com1: {:.3f} ± {:.3f}".format(Final_results[0, 0], Final_results[0, 1]))
-    print("SAD-com2: {:.3f} ± {:.3f}".format(Final_results[1, 0], Final_results[1, 1]))
-    print("SAD-com3: {:.3f} ± {:.3f}".format(Final_results[2, 0], Final_results[2, 1]))
-    break
+    print("EPS-AD: {:.3f} ± {:.3f}".format(Final_results[0, 0], Final_results[0, 1]))
+    print("SAMMD: {:.3f} ± {:.3f}".format(Final_results[1, 0], Final_results[1, 1]))
+    print("SAD-com1: {:.3f} ± {:.3f}".format(Final_results[2, 0], Final_results[2, 1]))
+    print("SAD-com2: {:.3f} ± {:.3f}".format(Final_results[3, 0], Final_results[3, 1]))
+    print("SAD-com3: {:.3f} ± {:.3f}".format(Final_results[4, 0], Final_results[4, 1]))
+    # break
