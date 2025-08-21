@@ -21,6 +21,8 @@ def adv_generate(
         print('num_steps is: ', args.num_steps)
     model.eval()
     bool_i=0
+    original_labels_list = []
+    predicted_labels_list = []
     with torch.enable_grad():
         for data, target in test_loader:
             data, target = data.cuda(), target.cuda()
@@ -31,12 +33,22 @@ def adv_generate(
                 y = target,
                 args = args
             )
+            # collect original labels
+            original_labels_list.append(target.clone().cpu())
+
+            # predict labels on adversarial examples (no grad needed)
+            with torch.no_grad():
+                logits_adv = model(x_adv)
+                preds_adv = torch.argmax(logits_adv, dim=1)
+            predicted_labels_list.append(preds_adv.clone().cpu())
             if bool_i == 0:
                 X_adv = x_adv.clone().cpu()
             else :
                 X_adv = torch.cat((X_adv, x_adv.clone().cpu()), 0)
             bool_i +=1
-    return X_adv
+    original_labels = torch.cat(original_labels_list, dim=0)
+    predicted_labels = torch.cat(predicted_labels_list, dim=0)
+    return X_adv, original_labels, predicted_labels
 
 # updated version, including more types of adversarial attacks
 def craft_adv(

@@ -91,7 +91,7 @@ def SAD(path, N1, rs, check, model_params, kernel, n_test, n_per, alpha, ref):
         start_time = time.time()
         p_value, th, mmd = mmd_permutation_test3(Z_te, Z_rep_te, N1, n_per=n_per, kernel=kernel, params=[b_q, b_phi])
         test_time += time.time() - start_time
-
+        # print(f"p_value: {p_value}, th: {th}, mmd: {mmd}")
         H_SAD[k] = not (p_value < alpha)
         T_SAD[k] = th
         M_SAD[k] = mmd

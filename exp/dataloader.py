@@ -52,17 +52,22 @@ def sample_CIFAR10(path, N, rs, check, model, ref="adv", is_test=True, batch_siz
     ind = np.random.choice(len(ADV), len(ADV), replace=False)
     ADV, ADV_rep = ADV[ind], ADV_rep[ind]
     
-    if ref == "adv" and check:
+    if ref == "adv":
+        n_samples = len(ADV)
+        split_idx = n_samples // 2
         if not is_test and builtins.DATALOG_COUNT == 0:
             log("ADV as ref", sep=True)
             log("ADV.shape: {}".format(ADV.shape))
-        n_samples = len(ADV)
-        split_idx = n_samples // 2
-        
-        P = ADV[:split_idx]
-        Q = ADV[split_idx:]
-        P_rep = ADV_rep[:split_idx] 
-        Q_rep = ADV_rep[split_idx:]
+        if check:
+            P = ADV[:split_idx]
+            Q = ADV[split_idx:]
+            P_rep = ADV_rep[:split_idx] 
+            Q_rep = ADV_rep[split_idx:]
+        else:
+            P = ADV #[:split_idx]
+            Q = load_cifar10_test().to(device) #[:split_idx].to(device) # Q is shuffled inside
+            P_rep = ADV_rep #[:split_idx]
+            Q_rep = rep_by_batch(Q, model, batch_size)
 
     np.random.seed(rs*N)
     P_tr_idx = np.random.choice(len(P), N, replace=False)
@@ -114,3 +119,10 @@ def rep_by_batch(data, model,batch_size):
 
 def flatten_img(img):
     return img.view(img.size(0), -1)
+
+def load_cifar10_test():
+    transform_test = transforms.Compose([transforms.ToTensor(),])
+    testset = datasets.CIFAR10(root='/data/gpfs/projects/punim2112/SAD-Sample-wise-Adversarial-Detection/data/cifar10', train=False, download=True, transform=transform_test)
+    test_loader = torch.utils.data.DataLoader(testset, batch_size=len(testset), shuffle=True, num_workers=0) # shuffle Q
+    imgs, _ = next(iter(test_loader))
+    return imgs

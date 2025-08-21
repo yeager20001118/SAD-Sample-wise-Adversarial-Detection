@@ -53,22 +53,27 @@ def main():
     model.eval()
     print('==> Generate adversarial sample')
 
-    PATH_DATA='./Adv_data/{}/{}'.format(args.dataset, net)
-    ATTACK_FILENAME = 'Adv_{}_{}_{}_eps{}_{}.npy'.format(args.dataset, args.category, args.num_steps, args.epsilon, args.norm)
+    PATH_DATA='./Adv_data/{}/{}/with_labels'.format(args.dataset, net)
+    ATTACK_FILENAME = 'Adv_{}_{}_{}_eps{}_{}.npz'.format(args.dataset, args.category, args.num_steps, args.epsilon, args.norm)
 
     os.makedirs(PATH_DATA, exist_ok=True)
 
     args.epsilon = args.epsilon / 255
     args.step_size = args.epsilon / 5
 
-    X_adv=attack.adv_generate(
+    X_adv, original_labels, predicted_labels = attack.adv_generate(
         model = model, 
         test_loader = test_loader,
         args = args
     )
 
-    np.save(os.path.join(PATH_DATA, ATTACK_FILENAME), X_adv.detach().numpy())
-    print('Adversarial examples saved to: {}'.format(os.path.join(PATH_DATA, ATTACK_FILENAME)))
+    np.savez(
+        os.path.join(PATH_DATA, ATTACK_FILENAME),
+        X_adv=X_adv.detach().cpu().numpy(),
+        original_labels=original_labels.detach().cpu().numpy(),
+        predicted_labels=predicted_labels.detach().cpu().numpy(),
+    )
+    print('Adversarial examples (with labels) saved to: {}'.format(os.path.join(PATH_DATA, ATTACK_FILENAME)))
 
 if __name__ == "__main__":
     main()

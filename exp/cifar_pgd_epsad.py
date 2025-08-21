@@ -1,0 +1,106 @@
+import numpy as np
+import argparse
+import sys
+import os
+import builtins
+
+# UDF authored by Alex, Jiacheng, Xunye, Yiyi, Zesheng, and Zhijian
+sys.path.append('/data/gpfs/projects/punim2112/SAD-Sample-wise-Adversarial-Detection')
+from models import *
+from exp.dataloader import *
+from baselines.EPS_AD.EPS_AD import train_EPS_AD, EPS_AD
+
+# builtins.IS_LOG = False  # mute the log
+print("Logging is {}".format("on" if builtins.IS_LOG else "off"))
+
+parser = argparse.ArgumentParser()
+# parameters to generate data
+parser.add_argument('--check', default=1, help='check reject adv (1), reject clean(0)', type=int)
+parser.add_argument('--N1', default=5, help='number of samples in P', type=int)
+parser.add_argument('--epsilon', default=[1,2,4,8], help='epsilon', type=list)
+parser.add_argument('--rs', default=[819,819,819,819], help='random seed', type=list)
+
+# parameters to conduct exp
+parser.add_argument('--n_exp', default=10, help='number of experiments', type=int)
+parser.add_argument('--n_test', default=100, help='number of test times', type=int)
+parser.add_argument('--n_per', default=1000, help='number of permutations', type=int)
+parser.add_argument('--alpha', default=0.05, help='probability of not reject adv', type=float)
+
+# parameters to train EPS-AD
+parser.add_argument('--kernel', default="eps_ad", help='kernel type (kept for compatibility)', type=str)
+parser.add_argument('--N_epoch', default=200, help='epochs to train EPS-AD discriminator', type=int)
+parser.add_argument('--batch_size', default=128, help='batch size', type=int)
+parser.add_argument('--lr', default=0.0002, help='learning rate', type=float)
+parser.add_argument('--ref', default="adv", help='reference data, adv or org', type=str)
+
+# EPS-AD specific parameters
+parser.add_argument('--feature_dim', default=300, help='feature dimension for discriminator', type=int)
+parser.add_argument('--sigma0_init', default=15.0, help='initial sigma0 value', type=float)
+parser.add_argument('--sigma_init', default=100.0, help='initial sigma value', type=float)
+parser.add_argument('--epsilon_init', default=2, help='initial epsilon value', type=int)
+
+args = parser.parse_args()
+
+Results = np.zeros((1, args.n_exp))  # Only one method (EPS-AD)
+
+H_EPS_AD = np.zeros(args.n_test)
+
+# pre-settings for adv path
+adv_path = "/data/gpfs/projects/punim2112/SAD-Sample-wise-Adversarial-Detection/adv"
+# pre-settings for model
+model_arch = "Res18"
+ckpt = "net_150.pth"
+model_path = os.path.join(adv_path, model_arch + "_ckpt", ckpt)
+# pre-settings for adv attack data
+dataset_name = 'cifar10'
+attk_method = 'pgd'
+n_steps = 5
+penalty = "linf"
+
+model = load_model(model_arch, model_path)
+
+exp_path = "/data/gpfs/projects/punim2112/SAD-Sample-wise-Adversarial-Detection/exp/"
+for i in range(len(args.epsilon)):
+    builtins.DATALOG_COUNT = 0
+    path = os.path.join(adv_path, "Adv_data", dataset_name, model_arch, f"Adv_{dataset_name}_{attk_method}_{n_steps}_eps{args.epsilon[i]}_{penalty}.npy")
+    
+    # Train EPS-AD
+    params = train_EPS_AD(path, args.N1, args.rs[i], args.check, model, args.N_epoch, args.lr, 
+                         dataset=dataset_name, feature_dim=args.feature_dim, 
+                         sigma0_init=args.sigma0_init, sigma_init=args.sigma_init, 
+                         epsilon_init=args.epsilon_init, ref=args.ref)
+    
+    file_name = args.ref+'_'+dataset_name+'_'+attk_method+'_'+str(n_steps)+'_eps'+str(args.epsilon[i])+'_'+penalty+'_N'+str(args.N1)+'_epsad'
+    
+    for kk in range(args.n_exp):
+        # Test EPS-AD
+        H_EPS_AD, _, _, _ = EPS_AD(path, args.N1, kk*args.n_exp+args.rs[i], args.check, params, args.kernel, args.n_test, args.n_per, args.alpha, args.ref, model)
+
+        Results[0, kk] = np.mean(H_EPS_AD)
+
+        if args.check == 1:
+            os.makedirs(os.path.join(exp_path, "Results", "test_power", str(args.alpha)), exist_ok=True)
+            np.savetxt(os.path.join(exp_path, "Results", "test_power", str(args.alpha), file_name), Results, fmt='%.3f')
+        if args.check == 0:
+            os.makedirs(os.path.join(exp_path, "Results", "typeI_error", str(args.alpha)), exist_ok=True)
+            np.savetxt(os.path.join(exp_path, "Results", "typeI_error", str(args.alpha), file_name), Results, fmt='%.3f')
+        break
+        
+    Final_results = np.zeros((Results.shape[0], 2))
+    for j in range(Results.shape[0]):
+        Final_results[j, 0] = np.mean(Results[j, :])
+        Final_results[j, 1] = np.std(Results[j, :])/np.sqrt(args.n_exp)
+
+    if args.check == 1:
+        result_file = os.path.join(exp_path, "Results", "test_power", str(args.alpha), file_name)
+        with open(result_file, 'a') as f:
+            np.savetxt(f, Final_results, fmt='%.3f')
+        print(f"EPS-AD Detection of {args.ref}-ref {dataset_name} under {attk_method} with eps={args.epsilon[i]}, penalty={penalty} and N={args.N1} is done")
+    if args.check == 0:
+        result_file = os.path.join(exp_path, "Results", "typeI_error", str(args.alpha), file_name)
+        with open(result_file, 'a') as f:
+            np.savetxt(f, Final_results, fmt='%.3f')
+        print(f"EPS-AD TypeI check of {args.ref}-ref {dataset_name} under {attk_method} with eps={args.epsilon[i]}, penalty={penalty} and N={args.N1} is done")
+
+    print("EPS-AD: {:.3f} ± {:.3f}".format(Final_results[0, 0], Final_results[0, 1]))
+    break

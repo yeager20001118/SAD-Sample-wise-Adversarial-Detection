@@ -25,14 +25,14 @@ parser.add_argument("--batch_size", type=int, default=100, help="size of the bat
 parser.add_argument("--lr", type=float, default=0.0002, help="adam: learning rate for C2STs")
 parser.add_argument("--img_size", type=int, default=64, help="size of each image dimension")
 parser.add_argument("--channels", type=int, default=3, help="number of image channels")
-parser.add_argument("--n", type=int, default=3, help="number of samples in one set")
+parser.add_argument("--n", type=int, default=50, help="number of samples in one set")
 opt = parser.parse_args()
 print(opt)
 dtype = torch.float
 device = torch.device("cuda:0")
 cuda = True if torch.cuda.is_available() else False
 N_per = 100 # permutation times
-alpha = 0.5 # test threshold
+alpha = 0.2 # test threshold
 N1 = opt.n # number of samples in one set
 K = 20 # number of trails
 N = 100 # number of test sets
@@ -76,7 +76,8 @@ with torch.no_grad():
 P_features = torch.cat(outputs, dim=0) # dim: (10000, 10)
 
 # adv attack data
-Q = np.load("/data/gpfs/projects/punim2112/SAD-Sample-wise-Adversarial-Detection/adv/Adv_data/cifar10/Res18/Adv_cifar_PGD20_eps8.npy")
+# Q = np.load("/data/gpfs/projects/punim2112/SAD-Sample-wise-Adversarial-Detection/adv/Adv_data/cifar10/Res18/Adv_cifar_PGD20_eps8.npy")
+Q = np.load("/data/gpfs/projects/punim2112/SAD-Sample-wise-Adversarial-Detection/adv/Adv_data/cifar10/Res18/Adv_cifar10_pgd_5_eps1_linf.npy")
 Q = torch.from_numpy(Q).float().cuda()
 n_Q = Q.shape[0]
 
@@ -187,7 +188,7 @@ for kk in range(K):
 
         Z_te = torch.cat([P_te_N1, Q_te_N1], dim=0)
         Z_fea_te = torch.cat([P_fea_te_N1, Q_fea_te_N1], dim=0)
-        p_value, th, mmd = mmd_permutation_test3(Z_te, Z_fea_te, N1, num_permutations=100, kernel="com3", params=[c_epsilon, b_q, b_phi])
+        p_value, th, mmd = mmd_permutation_test3(Z_te, Z_fea_te, N1, num_permutations=100, kernel="com1", params=[c_epsilon, b_q, b_phi])
         # print(f"p_value: {p_value}, th: {th}, mmd: {mmd}")
         
         H_adaptive[k] = p_value < alpha
