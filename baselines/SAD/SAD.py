@@ -27,9 +27,9 @@ def train_SAD(path, N1, rs, check, model, N_epoch, lr, ref):
 
     log("path: ", path)
     (P, Q), (P_rep, Q_rep) = load_data(path, N1, rs, check, model, ref = ref, is_test=False)
-    Dxy_org = Pdist2(P, Q)
-    Dxy_rep = Pdist2(P_rep, Q_rep)
-    b_q = Dxy_org.mean()
+    Dxy_org = Pdist2(Q, Q)
+    Dxy_rep = Pdist2(Q_rep, Q_rep)
+    b_q = Dxy_org.median()
     b_phi = Dxy_rep.median()
 
     c_epsilon = torch.tensor(1.0).to(device)
@@ -76,15 +76,14 @@ def SAD(path, N1, rs, check, model_params, kernel, n_test, n_per, alpha, ref):
     np.random.seed(rs*1021 + N1)
     test_time = 0
     for k in range(n_test):
-        P_idx = np.random.choice(len(P), N1, replace=False)
-        P_te = P[P_idx]
-        P_rep_te = P_rep[P_idx]
-
-        Q_idx = np.random.choice(len(Q), N1, replace=False)
+        # Q_idx = np.random.choice(len(Q), N1, replace=False) #TODO
+        Q_idx = np.random.choice(len(Q), 5, replace=False)
         Q_te = Q[Q_idx]
         Q_rep_te = Q_rep[Q_idx]
 
-        # log("P_te.shape: {}, P_rep_te.shape: {}, Q_te.shape: {}, Q_rep_te.shape: {}".format(P_te.shape, P_rep_te.shape, Q_te.shape, Q_rep_te.shape))
+        P_idx = np.random.choice(len(P), N1, replace=False)
+        P_te = P[P_idx]
+        P_rep_te = P_rep[P_idx]
 
         Z_te = torch.cat([P_te, Q_te], dim=0)
         Z_rep_te = torch.cat([P_rep_te, Q_rep_te], dim=0)

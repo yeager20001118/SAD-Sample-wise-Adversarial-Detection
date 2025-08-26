@@ -27,7 +27,6 @@ def log(*args, sep=False, **kwargs):
 def load_data(path, N, rs, check, model, ref, is_test=True):
     if 'cifar10' in path:
         samples = sample_CIFAR10(path, N, rs, check, model, ref, is_test)
-
     return samples
 
 def check_device():
@@ -43,7 +42,13 @@ def sample_CIFAR10(path, N, rs, check, model, ref="adv", is_test=True, batch_siz
     """ Default reference set is adv """
     device = check_device()
     model = model.to(device)
-    ADV = np.load(path)
+    if path.endswith(".npz"):
+        ADV, n_total = load_cifar10_adv_success(path)
+        
+        if not is_test and builtins.DATALOG_COUNT == 0:
+            log(f"Loaded {n_total} total samples, {len(ADV)} successfully attacked samples", sep=True)
+    else:
+        ADV = np.load(path)
     ADV = torch.from_numpy(ADV).float().to(device)
     ADV_rep = rep_by_batch(ADV, model, batch_size)
 
@@ -126,3 +131,13 @@ def load_cifar10_test():
     test_loader = torch.utils.data.DataLoader(testset, batch_size=len(testset), shuffle=True, num_workers=0) # shuffle Q
     imgs, _ = next(iter(test_loader))
     return imgs
+
+def load_cifar10_adv_success(path):
+    data = np.load(path)
+    X_adv = data['X_adv']
+    original_labels = data['predicted_original_labels']
+    predicted_labels = data['predicted_adv_labels']
+    
+    success_mask = (predicted_labels != original_labels)
+    ADV = X_adv[success_mask]
+    return ADV, len(X_adv)
