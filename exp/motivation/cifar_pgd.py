@@ -21,7 +21,7 @@ print("Logging is {}".format("on" if builtins.IS_LOG else "off"))
 parser = argparse.ArgumentParser()
 # parser.add_argument('--attk_method', type=str, default='pgd', help='adversarial attack method')
 # parameters to generate data
-parser.add_argument('--check', default=0, help='check reject adv (1), reject clean(0)', type=int)
+parser.add_argument('--check', default=1, help='check reject adv (1), reject clean(0)', type=int)
 parser.add_argument('--N_rf', default=50, help='number of samples in referenced data', type=int)
 parser.add_argument('--N_ip', default=50, help='number of samples in input data', type=int)
 parser.add_argument('--epsilon', default=[1,2,4,8], help='epsilon', type=list)
@@ -71,6 +71,7 @@ H_SAD_com1 = np.zeros(args.n_test)
 H_SAD_com2 = np.zeros(args.n_test)
 H_SAD_com3 = np.zeros(args.n_test)
 
+builtins.CLEAN_PATH = "/data/gpfs/projects/punim2112/SAD-Sample-wise-Adversarial-Detection/data/cifar10"
 # pre-settings for adv path
 adv_path = "/data/gpfs/projects/punim2112/SAD-Sample-wise-Adversarial-Detection/adv"
 # pre-settings for model
@@ -118,7 +119,7 @@ for i in range(len(args.epsilon)):
         # H_SAD_com2, _, _, _ = SAD(path, args.N_rf, args.N_ip, kk*args.n_exp+args.rs[i], args.check, model, "airm", args.n_test, args.n_per, args.alpha, args.ref)
 
         # H_SAD_com3, _, _, _ = SAD(path, args.N_rf, args.N_ip, kk*args.n_exp+args.rs[i], args.check, model, "stein", args.n_test, args.n_per, args.alpha, args.ref)
-        break
+        # break
         Results[0, kk] = np.mean(H_EPS_AD)
         Results[1, kk] = np.mean(H_SAMMD)
         Results[2, kk] = np.mean(H_MMDAgg)
@@ -159,4 +160,4 @@ for i in range(len(args.epsilon)):
     print("SAD-com1: {:.3f} ± {:.3f}".format(Final_results[5, 0], Final_results[5, 1]))
     print("SAD-com2: {:.3f} ± {:.3f}".format(Final_results[6, 0], Final_results[6, 1]))
     print("SAD-com3: {:.3f} ± {:.3f}".format(Final_results[7, 0], Final_results[7, 1]))
-    break
+    # break
