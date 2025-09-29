@@ -14,7 +14,7 @@ parser = argparse.ArgumentParser(description='PyTorch White-box Adversarial Atta
 parser.add_argument('--net', type=str, default="resnet18", help="decide which network to use,choose from resnet18, resnet34")
 parser.add_argument('--dataset', type=str, default="cifar10", help="choose from cifar10,svhn")
 parser.add_argument('--drop_rate', type=float,default=0.0, help='WRN drop rate')
-parser.add_argument('--model_path', default='./Res18_ckpt/net_150.pth', help='model for white-box attack evaluation')
+parser.add_argument('--model_path', default='./checkpoint/CIFAR10/resnet18/resnet-18.pth', help='model for white-box attack evaluation')
 
 # Modification: adding configurations of adversarial attacks
 parser.add_argument('--epsilon', default=8, type=int, help='perturbation')
@@ -39,7 +39,8 @@ def main():
 
     print('==> Load Model')
     if args.net == "resnet18":
-        model = ResNet18().cuda()
+        model =  RN18_10(semantic=False).cuda()
+        model = torch.nn.DataParallel(model)
         net = "Res18"
     if args.net == "resnet34":
         model = ResNet34().cuda()
@@ -61,17 +62,18 @@ def main():
     args.epsilon = args.epsilon / 255
     args.step_size = args.epsilon / 5
 
-    X_adv, original_labels, predicted_labels = attack.adv_generate(
+    X_adv, predicted_original_labels, predicted_adv_labels = attack.adv_generate(
         model = model, 
         test_loader = test_loader,
         args = args
     )
 
+    # Save as a tuple: (X_adv, predicted_original_label, predicted_adv_label)
     np.savez(
         os.path.join(PATH_DATA, ATTACK_FILENAME),
         X_adv=X_adv.detach().cpu().numpy(),
-        original_labels=original_labels.detach().cpu().numpy(),
-        predicted_labels=predicted_labels.detach().cpu().numpy(),
+        predicted_original_labels=predicted_original_labels.detach().cpu().numpy(),
+        predicted_adv_labels=predicted_adv_labels.detach().cpu().numpy(),
     )
     print('Adversarial examples (with labels) saved to: {}'.format(os.path.join(PATH_DATA, ATTACK_FILENAME)))
 

@@ -21,11 +21,14 @@ def adv_generate(
         print('num_steps is: ', args.num_steps)
     model.eval()
     bool_i=0
-    original_labels_list = []
-    predicted_labels_list = []
+    predicted_original_labels_list = []
+    predicted_adv_labels_list = []
+    target_list = []
     with torch.enable_grad():
         for data, target in test_loader:
             data, target = data.cuda(), target.cuda()
+            # collect original target
+            target_list.append(target.clone().cpu())
             # replace pgd with craft_adv
             x_adv = craft_adv(
                 model = model,
@@ -33,22 +36,35 @@ def adv_generate(
                 y = target,
                 args = args
             )
-            # collect original labels
-            original_labels_list.append(target.clone().cpu())
-
             # predict labels on adversarial examples (no grad needed)
             with torch.no_grad():
                 logits_adv = model(x_adv)
+                logits_ori = model(data)
                 preds_adv = torch.argmax(logits_adv, dim=1)
-            predicted_labels_list.append(preds_adv.clone().cpu())
+                preds_ori = torch.argmax(logits_ori, dim=1)
+            # collect predictions
+            predicted_original_labels_list.append(preds_ori.clone().cpu())
+            predicted_adv_labels_list.append(preds_adv.clone().cpu())
             if bool_i == 0:
                 X_adv = x_adv.clone().cpu()
             else :
                 X_adv = torch.cat((X_adv, x_adv.clone().cpu()), 0)
             bool_i +=1
-    original_labels = torch.cat(original_labels_list, dim=0)
-    predicted_labels = torch.cat(predicted_labels_list, dim=0)
-    return X_adv, original_labels, predicted_labels
+    # concatenate all collected data
+    all_targets = torch.cat(target_list, dim=0)
+    original_labels = torch.cat(predicted_original_labels_list, dim=0)
+    adv_labels = torch.cat(predicted_adv_labels_list, dim=0)
+    
+    # Filter: only keep samples where original prediction matches ground truth
+    correct_mask = (original_labels == all_targets)
+    print(f'Total samples: {len(correct_mask)}, Correctly classified: {correct_mask.sum().item()}')
+    
+    # Apply filter to all data
+    X_adv_filtered = X_adv[correct_mask]
+    original_labels_filtered = original_labels[correct_mask]
+    adv_labels_filtered = adv_labels[correct_mask]
+    
+    return X_adv_filtered, original_labels_filtered, adv_labels_filtered
 
 # updated version, including more types of adversarial attacks
 def craft_adv(
@@ -65,7 +81,7 @@ def craft_adv(
             steps=args.num_steps, 
             random_start=args.random_start
             )
-    elif args.category == 'pgd_l2':
+    elif args.category == 'pgd-l2':
         attack = PGDL2(
             model, 
             eps=args.epsilon, 
@@ -81,7 +97,7 @@ def craft_adv(
             version='rand',
             n_classes=args.num_class
             )
-    elif args.category == 'aa_l2':
+    elif args.category == 'aa-l2':
         attack = AutoAttack(
             model, 
             norm='L2', 

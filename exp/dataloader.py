@@ -3,6 +3,7 @@ from torchvision import datasets
 import torch
 import numpy as np
 import builtins
+import os
 
 
 # UDF authored by Alex, Jiacheng, Xunye, Yiyi, Zesheng, and Zhijian
@@ -24,9 +25,9 @@ def log(*args, sep=False, **kwargs):
         else:
             print(*args, **kwargs)
 
-def load_data(path, N, rs, check, model, ref, is_test=True):
+def load_data(path, N, rs, check, model, ref, is_test=True, class_idx=None):
     if 'cifar10' in path:
-        samples = sample_CIFAR10(path, N, rs, check, model, ref, is_test)
+        samples = sample_CIFAR10(path, N, rs, check, model, ref, is_test, class_idx=class_idx)
     return samples
 
 def check_device():
@@ -38,19 +39,28 @@ def check_device():
         device = torch.device("cpu")
     return device
 
-def sample_CIFAR10(path, N, rs, check, model, ref="adv", is_test=True, batch_size=128):
+def sample_CIFAR10(path, N, rs, check, model, ref="adv", is_test=True, class_idx=None, batch_size=128):
     """ Default reference set is adv """
     device = check_device()
-    model = model.to(device)
+    model = model.to(device) if model is not None else None
     if path.endswith(".npz"):
-        ADV, n_total = load_cifar10_adv_success(path)
+        ADV, n_total = load_cifar10_adv_success(path, class_idx=class_idx)
         
         if not is_test and builtins.DATALOG_COUNT == 0:
-            log(f"Loaded {n_total} total samples, {len(ADV)} successfully attacked samples", sep=True)
+            if class_idx is not None:
+                log(f"Loaded {n_total} total samples, {len(ADV)} successfully attacked samples as class {class_idx}", sep=True)
+            else:
+                log(f"Loaded {n_total} total samples, {len(ADV)} successfully attacked samples", sep=True)
     else:
-        ADV = np.load(path)
+        raise ValueError(f"Unsupported file extension: {path}")
+
     ADV = torch.from_numpy(ADV).float().to(device)
-    ADV_rep = rep_by_batch(ADV, model, batch_size)
+    if model is not None:
+        ADV_rep = rep_by_batch(ADV, model, batch_size)
+    else:
+        if not is_test and builtins.DATALOG_COUNT == 0:
+            log("No model provided, using zero-filled representation", sep=True)
+        ADV_rep = torch.zeros_like(ADV)
 
     # shuffle
     np.random.seed(10086+rs)
@@ -66,13 +76,35 @@ def sample_CIFAR10(path, N, rs, check, model, ref="adv", is_test=True, batch_siz
         if check:
             P = ADV[:split_idx]
             Q = ADV[split_idx:]
-            P_rep = ADV_rep[:split_idx] 
+            P_rep = ADV_rep[:split_idx]
             Q_rep = ADV_rep[split_idx:]
         else:
             P = ADV #[:split_idx]
-            Q = load_cifar10_test().to(device) #[:split_idx].to(device) # Q is shuffled inside
+            Q = load_cifar10_test(class_idx=class_idx).to(device) #[:split_idx].to(device) # Q is shuffled inside
             P_rep = ADV_rep #[:split_idx]
-            Q_rep = rep_by_batch(Q, model, batch_size)
+            if model is not None:
+                Q_rep = rep_by_batch(Q, model, batch_size)
+            else:
+                Q_rep = torch.zeros_like(Q)
+
+    elif ref == "org":
+        CLN = load_cifar10_test(class_idx=class_idx).to(device)
+        CLN_rep = rep_by_batch(CLN, model, batch_size)
+        n_samples = len(CLN)
+        split_idx = n_samples // 2
+        if not is_test and builtins.DATALOG_COUNT == 0:
+            log("ORG as ref", sep=True)
+            log("ORG.shape: {}, ADV.shape: {}".format(CLN.shape, ADV.shape))
+        if check:
+            P = CLN
+            Q = ADV
+            P_rep = CLN_rep #[:split_idx]
+            Q_rep = ADV_rep #[:split_idx]
+        else:
+            P = CLN[:split_idx]
+            Q = CLN[split_idx:]
+            P_rep = CLN_rep[:split_idx]
+            Q_rep = CLN_rep[split_idx:]
 
     np.random.seed(rs*N)
     P_tr_idx = np.random.choice(len(P), N, replace=False)
@@ -125,19 +157,92 @@ def rep_by_batch(data, model,batch_size):
 def flatten_img(img):
     return img.view(img.size(0), -1)
 
-def load_cifar10_test():
+def load_cifar10_test(class_idx=None):
+    if class_idx is not None:
+        transform_test = transforms.Compose([transforms.ToTensor(),])
+        testset = datasets.CIFAR10(root=builtins.CLEAN_PATH, train=False, download=True, transform=transform_test)
+        test_loader = torch.utils.data.DataLoader(testset, batch_size=len(testset), shuffle=True, num_workers=0)
+        imgs, labels = next(iter(test_loader))
+        class_indices = (labels == class_idx).nonzero(as_tuple=True)[0]
+        imgs = imgs[class_indices]
+        return imgs
     transform_test = transforms.Compose([transforms.ToTensor(),])
-    testset = datasets.CIFAR10(root='/data/gpfs/projects/punim2112/SAD-Sample-wise-Adversarial-Detection/data/cifar10', train=False, download=True, transform=transform_test)
+    testset = datasets.CIFAR10(root=builtins.CLEAN_PATH, train=False, download=True, transform=transform_test)
     test_loader = torch.utils.data.DataLoader(testset, batch_size=len(testset), shuffle=True, num_workers=0) # shuffle Q
     imgs, _ = next(iter(test_loader))
     return imgs
 
-def load_cifar10_adv_success(path):
+def load_cifar10_train(n_c):
+    transform_train = transforms.Compose([transforms.ToTensor(),])
+    trainset = datasets.CIFAR10(root=builtins.CLEAN_PATH, train=True, download=True, transform=transform_train)
+    train_loader = torch.utils.data.DataLoader(trainset, batch_size=len(trainset), shuffle=False, num_workers=0)
+    imgs, labels = next(iter(train_loader))
+
+    # Select n_c images from each class
+    indices = []
+    for i in range(10):  # 10 classes in CIFAR-10
+        class_indices = (labels == i).nonzero(as_tuple=True)[0][:n_c]
+        indices.append(class_indices)
+    indices = torch.cat(indices)
+    imgs = imgs[indices]
+    return imgs
+
+def load_cifar10_train_with_label(model, device, n_c=5000):
+    
+    class_reps_path = os.path.join(builtins.HELPER_PATH, "class_reps.pt")
+    
+    # Check if files exist and load them
+    if os.path.exists(class_reps_path):
+        log(f"Loading class_reps from {class_reps_path}")
+        class_reps = torch.load(class_reps_path)
+        return class_reps
+    
+    transform_train = transforms.Compose([transforms.ToTensor(),])
+    trainset = datasets.CIFAR10(root=builtins.CLEAN_PATH, train=True, download=True, transform=transform_train)
+    train_loader = torch.utils.data.DataLoader(trainset, batch_size=len(trainset), shuffle=False, num_workers=0)
+    imgs, labels = next(iter(train_loader))
+    
+    # Initialize dict to store representations for each class
+    class_reps = {}
+    
+    for i in range(10):  # 10 classes in CIFAR-10
+        indices = (labels == i).nonzero(as_tuple=True)[0] 
+        class_imgs = imgs[indices]
+        class_rep = rep_by_batch(class_imgs, model, 128)
+        class_reps[i] = [flatten_img(class_imgs).to(device), class_rep]
+        log(f"Class {i}: {len(class_imgs)} images processed")
+    
+    # Save class_reps for future use
+    torch.save(class_reps, class_reps_path)
+    log(f"Saved class_reps to {class_reps_path}")
+            
+    return class_reps
+
+def load_cifar10_adv_success(path, class_idx=None):
     data = np.load(path)
     X_adv = data['X_adv']
     original_labels = data['predicted_original_labels']
     predicted_labels = data['predicted_adv_labels']
-    
+
     success_mask = (predicted_labels != original_labels)
-    ADV = X_adv[success_mask]
+    if class_idx is not None:
+        class_mask = (predicted_labels == class_idx)
+        mask = success_mask & class_mask
+    else:
+        mask = success_mask
+    ADV = X_adv[mask]
     return ADV, len(X_adv)
+
+def setup_time_log():
+    builtins.MMDAGG_TIME_LOG = 0
+    builtins.MMDFUSE_TIME_LOG = 0
+    builtins.DUAL_TIME_LOG = 0
+    builtins.SAD_TIME_LOG = 0
+    builtins.EPS_AD_TIME_LOG = 0
+    builtins.SAMMD_TIME_LOG = 0
+    builtins.FUSE_TIME_LOG = 0
+    builtins.AGG_TIME_LOG = 0
+    builtins.MMDAgg_TIME_LOG = 0
+    builtins.MMD_TIME_LOG = 0
+    builtins.MMD_DUAL_TIME_LOG = 0
+    builtins.MMD_SAD_TIME_LOG = 0

@@ -1,8 +1,9 @@
 import torch
-from torch.utils.data import TensorDataset, DataLoader
 import numpy as np
+import scipy
 import sys
 import builtins
+from torch.autograd import Function
 
 # UDF authored by Alex, Jiacheng, Xunye, Yiyi, Zesheng, and Zhijian
 builtins.IS_LOG=True
@@ -134,8 +135,10 @@ def mmd_u1(K, n, m, is_var=False):
     K_YY.fill_diagonal_(0)
 
     # Calculate each term of the MMD_u^2
+    # mmd_u_squared = (K_XX.sum() / (n * (n - 1))) + \
+    #     (K_YY.sum() / (m * (m - 1))) - (2 * K_XY.sum() / (n * m))
     mmd_u_squared = (K_XX.sum() / (n * (n - 1))) + \
-        (K_YY.sum() / (m * (m - 1))) - (2 * K_XY.sum() / (n * m))
+        (K_YY.sum() / (n * (n - 1))) - (2 * K_XY.sum() / (n * n))
     # mmd_u_squared = (K_YY.sum() / (m * (m - 1)))
     
     # mmd_u_squared = (K_XX.sum() / (n * (n - 1))) + \
@@ -177,52 +180,94 @@ def deep_objective(pairwise_matrix_f, pairwise_matrix, epsilon, b_q, b_phi, n_sa
     stats = torch.div(-1*mmd_value, mmd_std)
 
     return stats, mmd_value
-    
-def mmd_permutation_test(Z, Z_fea, n_samples, n_per=100, kernel="deep", params=[1.0]):
 
-    if kernel == "deep":
-        c_epsilon, b_q, b_phi = params
-    if "com" in kernel:
-        c_epsilon, b_q, b_phi = params
+def rep(A, model, path):
+    if 'cifar' in path:
+        n_channel = 3
+        img_size = 32
+    A_reshaped = A.view(-1, n_channel, img_size, img_size)
+    A_rep = model(A_reshaped)
+    return A_rep
 
-    # Compute the pairwise distance matrix for the full data
-    pairwise_matrix = torch_distance(Z, Z, norm=2, is_squared=True)
-    pairwise_matrix_f = torch_distance(Z_fea, Z_fea, norm=2, is_squared=True)
+def batch_cov_einsum(x):
+    """
+    x: (batch_size, n_samples, n_features)
+    cov: (batch_size, n_features, n_features)
+    """
+    B, N, D = x.shape
+    mean = x.mean(dim=1, keepdim=True)  # (B, 1, D)
+    x_centered = x - mean
+    factor = 1 / (N - 1)
 
-    epsilon = torch.sigmoid(c_epsilon)
-    K_q = gaussian_kernel(pairwise_matrix, b_q)
-    K_phi = gaussian_kernel(pairwise_matrix_f, b_phi)
-    K = (1 - epsilon) * K_phi * K_q + epsilon * K_q
-    
-    L = 100.0
-    
-    if kernel == "com1":
-        b_k = torch.median(pairwise_matrix)
-        K_num = gaussian_kernel(pairwise_matrix, b_k)
-        K_den = K
-        K = K_num / (K_den+L)
-    elif kernel == "com2":
-        b_k = torch.median(pairwise_matrix)
-        K_num = K
-        K_den = gaussian_kernel(pairwise_matrix, b_k)
-        K = K_num / (K_den+L)
-    elif kernel == "com3":
-        b_k = torch.median(pairwise_matrix)
-        K_org = gaussian_kernel(pairwise_matrix, b_k)
-        K_phi = K
-        # K = - torch.max(K_org, K_phi) / torch.min(K_org, K_phi)
-        # K =  K_org/(K_phi+L) - K_phi/(K_org+L)
-        # K =  torch.max(K_org/(K_phi+L), - K_phi/(K_org+L))
-        # K1 =  K_org/(K_phi+L)
-        # K1 = K1/torch.sum(K1**2)*n_samples**2
-        # K2 =  K_phi/(K_org+L)
-        # K2 = K2/torch.sum(K2**2)*n_samples**2
-        # K = K1 - K2
-        
-        K =  1 - torch.abs(K_org - K_phi)
-        
-    # Compute the observed MMD
-    observed_mmd = mmd_u(K, n_samples, n_samples)
+    cov = factor * torch.einsum('bni,bnj->bij', x_centered, x_centered)
+    return cov
+
+def log_cov(x, tol=1e-6):
+    L, V = torch.linalg.eigh(x)
+    L = torch.clamp(L, min=tol)
+    log_L = torch.log(L)
+    log_Zi = V @ torch.diag(log_L) @ V.t()
+    return log_Zi
+
+def inv_sqrt_cov(x, tol=1e-6):
+    L, V = torch.linalg.eigh(x)
+    L = torch.clamp(L, min=tol)
+    inv_sqrt_L = 1 / torch.sqrt(L)
+    inv_sqrt_Zi = V @ torch.diag(inv_sqrt_L) @ V.t()
+    return inv_sqrt_Zi
+
+class MatrixSquareRoot(Function):
+    """Square root of a positive definite matrix.
+    NOTE: matrix square root is not differentiable for matrices with
+          zero eigenvalues.
+    """
+    @staticmethod
+    def forward(ctx, input):
+        m = input.detach().cpu().numpy().astype(np.float_)
+        sqrtm = torch.from_numpy(scipy.linalg.sqrtm(m).real).to(input)
+        ctx.save_for_backward(sqrtm)
+        return sqrtm
+    @staticmethod
+    def backward(ctx, grad_output):
+        grad_input = None
+        if ctx.needs_input_grad[0]:
+            sqrtm, = ctx.saved_tensors
+            sqrtm = sqrtm.data.cpu().numpy().astype(np.float_)
+            gm = grad_output.data.cpu().numpy().astype(np.float_)
+            grad_sqrtm = scipy.linalg.solve_sylvester(sqrtm, sqrtm, gm)
+            grad_input = torch.from_numpy(grad_sqrtm).to(grad_output)
+        return grad_input
+sqrtm = MatrixSquareRoot.apply
+
+def mmd_permutation_test4(Z, n_samples, n_per=100, kernel="log_rbf", tol=1e-6):
+    # sigma = torch.median(torch_distance(Z, Z, norm=2, is_squared=True)) #XUNYE: use this get identify kernel matrix
+    # simga = 1 #XUNYE: 太小的都不行
+    sigma = 10
+    K = torch.zeros((Z.size(0), Z.size(0)), device=Z.device)
+    for i in range(Z.size(0)):
+
+        if kernel == "log_rbf":
+            log_Zi = log_cov(Z[i], tol) #XUNYE: 这个绝对没问题
+        elif kernel == "airm":
+            inv_sqrt_Zi = torch.inverse(sqrtm(Z[i]+1e-6*torch.eye(Z[i].size(0), device=Z.device))) #XUNYE: 这个也绝对没问题
+
+        for j in range(i, Z.size(0)):
+            if kernel == "log_rbf":
+                log_Zj = log_cov(Z[j], tol)
+                # sigma = torch.median(torch_distance(log_Zi, log_Zj, norm=2, is_squared=True)) #XUNYE: this may works, unsure
+                kij = torch.exp(-torch.norm(log_Zi - log_Zj)**2 / (2 * sigma **2))
+            elif kernel == "airm":
+                C121 = inv_sqrt_Zi @ Z[j] @ inv_sqrt_Zi #XUNYE: not identity matrix even if Z[i] == Z[j]
+                kij = torch.exp(-torch.norm(log_cov(C121, tol))**2 / (2 * sigma **2))
+            elif kernel == "stein":
+                logdet_avg = torch.linalg.slogdet((Z[i]+Z[j]) / 2.0)[1]
+                logdet_prod = torch.linalg.slogdet(Z[i] @ Z[j])[1] / 2.0
+                kij = torch.exp(-sigma * (logdet_avg - logdet_prod)) #XUNYE: logdet_avg - logdet_prod != 0 if Z[i] == Z[j]
+            
+            K[i, j] = kij
+            K[j, i] = kij
+
+    observed_mmd = mmd_u1(K.clone(), n_samples, len(K)-n_samples)
     # print("Observed MMD:", observed_mmd)
 
     count = 0
@@ -234,85 +279,7 @@ def mmd_permutation_test(Z, Z_fea, n_samples, n_per=100, kernel="deep", params=[
         K_perm = K[perm][:, perm]
 
         # Compute the MMD statistic for the permuted kernel matrix
-        perm_mmd = mmd_u(K_perm, n_samples, n_samples)
-        # print("Permuted MMD:", perm_mmd)
-        mmd_ps.append(perm_mmd)
-
-        if kernel == "com1" or kernel == "com3":
-            if perm_mmd <= observed_mmd:
-                count += 1
-        else:
-            if perm_mmd >= observed_mmd:
-                count += 1
-
-    p_value = count / n_per
-    
-    if kernel == "com1" or kernel == "com3":
-        return p_value, mmd_ps[np.int64(n_per*0.05)], observed_mmd
-    else:
-        return p_value, mmd_ps[np.int64(n_per*0.95)], observed_mmd
-
-def mmd_permutation_test3(Z, Z_fea, n_samples, n_per=100, kernel="deep", params=[1.0]):
-
-    if kernel == "deep":
-        b_q, b_phi = params
-    if "com" in kernel:
-        b_q, b_phi = params
-
-    # Compute the pairwise distance matrix for the full data
-    pairwise_matrix = torch_distance(Z, Z, norm=2, is_squared=True)
-    pairwise_matrix_f = torch_distance(Z_fea, Z_fea, norm=2, is_squared=True)
-    L = 0.1
-
-    K_q = gaussian_kernel(pairwise_matrix, b_q).float()
-    K_phi = gaussian_kernel(pairwise_matrix_f, b_phi).float()
-        
-    # # K_q = (K_q - K_q.mean()) / K_q.std()
-    # # K_phi = (K_phi - K_phi.mean()) / K_phi.std()
-    K_q = (K_q - K_q[:n_samples,:n_samples].mean()) / K_q[:n_samples,:n_samples].std()
-    K_phi = (K_phi - K_phi[:n_samples,:n_samples].mean()) / K_phi[:n_samples,:n_samples].std()
-    K_q = (K_q - K_q.min()) / (K_q.max() - K_q.min()) + L
-    K_phi = (K_phi - K_phi.min()) / (K_phi.max() - K_phi.min()) + L
-    # K_q = (K_q - K_q[:n_samples,:n_samples].min()) / (K_q[:n_samples,:n_samples].max() - K_q[:n_samples,:n_samples].min()) + L
-    # K_phi = (K_phi - K_phi[:n_samples,:n_samples].min()) / (K_phi[:n_samples,:n_samples].max() - K_phi[:n_samples,:n_samples].min()) + L
-    # K_q = K_q - K_q[:n_samples,:n_samples].min() + L
-    # K_phi = K_phi - K_phi[:n_samples,:n_samples].min() + L
-    # K_q = (K_q - K_q.min()) + L
-    # K_phi = (K_phi - K_phi.min()) + L
-    mean_q = K_q[:n_samples,:n_samples].mean()
-    mean_phi = K_phi[:n_samples,:n_samples].mean()
-    K_phi = K_phi * (mean_q / mean_phi)
-    
-    L = 0
-    if kernel == "com1":
-        K = K_q / (K_phi+L)
-    elif kernel == "com2":
-        K = K_phi / (K_q+L)
-    elif kernel == "com3":
-        K = torch.max(K_q, K_phi)/(torch.min(K_q, K_phi))
-        # K = torch.min(K_q, K_phi) / (torch.max(K_q, K_phi)+L)
-        # K =  torch.abs(K_q - K_phi)
-        # K = 1 - torch.abs(K_q - K_phi)
-        # K = torch.max(K_q, K_phi)
-        # K = - torch.min(K_q, K_phi)
-        # K = K_q
-        # K = K_phi
-    # K = (1 - c_epsilon) * K_phi * K_q + c_epsilon * K_q
-
-    # Compute the observed MMD
-    observed_mmd = mmd_u1(K.clone(), n_samples, n_samples)
-    # print("Observed MMD:", observed_mmd)
-
-    count = 0
-    # For each permutation, simply reorder the precomputed kernel matrix
-    mmd_ps = []
-    for _ in range(n_per):
-        perm = torch.randperm(Z.size(0), device=Z.device)
-        # Use the permutation to index into K:
-        K_perm = K[perm][:, perm]
-
-        # Compute the MMD statistic for the permuted kernel matrix
-        perm_mmd = mmd_u1(K_perm, n_samples, n_samples)
+        perm_mmd = mmd_u1(K_perm, n_samples, len(K)-n_samples)
         # print("Permuted MMD:", perm_mmd)
         mmd_ps.append(perm_mmd)
 
@@ -330,58 +297,4 @@ def mmd_permutation_test3(Z, Z_fea, n_samples, n_per=100, kernel="deep", params=
         sys.exit(1)
     
     return p_value, torch.sort(torch.tensor(mmd_ps))[0][int(n_per * 0.95)], observed_mmd
-
-def mmd_permutation_test2(Z, Z_fea, n_samples, num_permutations=100, kernel="deep", params=[1.0]):
-
-    if kernel == "deep":
-        c_epsilon, b_q, b_phi = params
-    if "com" in kernel:
-        c_epsilon, b_q, b_phi = params
-
-    # Compute the pairwise distance matrix for the full data
-    pairwise_matrix = torch_distance(Z, Z, norm=2, is_squared=True)
-    pairwise_matrix_f = torch_distance(Z_fea, Z_fea, norm=2, is_squared=True)
-
-    epsilon = torch.sigmoid(c_epsilon)
-    K_q = gaussian_kernel(pairwise_matrix, b_q)
-    K_phi = gaussian_kernel(pairwise_matrix_f, b_phi)
-    K = (1 - epsilon) * K_phi * K_q + epsilon * K_q
     
-    b_k = torch.median(pairwise_matrix)
-    K_org = K_q
-    K_phi = K
-    K1 =  -K_org/K_phi
-    K1 = K1/torch.sum(K1**2)*n_samples**4
-    K2 =  K_phi/K_org
-    K2 = K2/torch.sum(K2**2)*n_samples**4
-        
-    # Compute the observed MMD
-    L = 5
-    observed_mmd_1 = mmd_u(K1, n_samples, n_samples)
-    observed_mmd_2 = mmd_u(K2, n_samples, n_samples)
-    observed_mmd = 1/L*torch.log(L*(torch.exp(observed_mmd_1)+torch.exp(observed_mmd_2))/2)
-    # print("Observed MMD:", observed_mmd)
-
-    mmd1_ps = []
-    mmd2_ps = []
-    mmd_ps = []
-    for _ in range(num_permutations):
-        perm = torch.randperm(Z.size(0), device=Z.device)
-        # Use the permutation to index into K:
-        K1_perm = K1[perm][:, perm]
-        K2_perm = K2[perm][:, perm]
-
-        # Compute the MMD statistic for the permuted kernel matrix
-        perm_mmd1 = mmd_u(K1_perm, n_samples, n_samples)
-        perm_mmd2 = mmd_u(K2_perm, n_samples, n_samples)
-        perm_mmd = 1/L*torch.log(L*(torch.exp(perm_mmd1)+torch.exp(perm_mmd2))/2)
-        # print("Permuted MMD:", perm_mmd)
-        mmd1_ps.append(perm_mmd1.item())
-        mmd2_ps.append(perm_mmd2.item())
-        mmd_ps.append(perm_mmd.item())
-
-    p_value1 = (np.sum(np.array(mmd1_ps) >= observed_mmd_1.item()) + 1) / (len(mmd1_ps) + 1)
-    p_value2 = (np.sum(np.array(mmd2_ps) >= observed_mmd_2.item()) + 1) / (len(mmd2_ps) + 1)
-    p_value = (np.sum(np.array(mmd_ps) >= observed_mmd.item()) + 1) / (len(mmd_ps) + 1)
-    
-    return p_value, mmd_ps[np.int64(num_permutations*0.95)], observed_mmd
