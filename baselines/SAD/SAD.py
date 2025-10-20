@@ -19,15 +19,15 @@ def SAD(path, N1, N_ip, rs, check, model, kernel, n_test, n_per, alpha, ref):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
-    (P, Q), (_, _) = load_data(path, N1, rs, check, model, ref = ref, class_idx = 0) #XUNYE: class_idx 从0-9，只load cifar10的10个类，输入None就是随机类
+    (P, Q), (_, _) = load_data(path, N1, rs, check, model, ref = ref, class_idx = None) #XUNYE: class_idx 从0-9，只load cifar10的10个类，输入None就是随机类
 
     H_SAD = np.zeros(n_test)
     T_SAD = np.zeros(n_test)
     M_SAD = np.zeros(n_test)
 
-    b_x = 1 # std of generating the noise for x
-    b_y = 1
-    n_perturb = 10
+    b_x = 0.1 # std of generating the noise for x
+    b_y = 0.1
+    n_perturb = 20
 
     np.random.seed(rs*1021 + N1)
     test_time = 0

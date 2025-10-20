@@ -13,7 +13,7 @@ from exp.dataloader import *
 # from baselines.MMDAgg.MMDAgg import MMDAgg
 # from baselines.MMDFUSE.MMD_Fuse import MMDFuse
 # from baselines.DUAL.MMD_DUAL import DUAL_no_train
-from baselines.SAD.SAD import SAD
+from baselines.SAD.SAD_ZJ import SAD
 
 # builtins.IS_LOG = False  # mute the log
 print("Logging is {}".format("on" if builtins.IS_LOG else "off"))
@@ -21,7 +21,7 @@ print("Logging is {}".format("on" if builtins.IS_LOG else "off"))
 parser = argparse.ArgumentParser()
 # parser.add_argument('--attk_method', type=str, default='pgd', help='adversarial attack method')
 # parameters to generate data
-parser.add_argument('--check', default=1, help='check reject adv (1), reject clean(0)', type=int)
+parser.add_argument('--check', default=0, help='check reject adv (1), reject clean(0)', type=int)
 parser.add_argument('--N_rf', default=50, help='number of samples in referenced data', type=int)
 parser.add_argument('--N_ip', default=50, help='number of samples in input data', type=int)
 parser.add_argument('--epsilon', default=[1,2,4,8], help='epsilon', type=list)
@@ -129,28 +129,28 @@ for i in range(len(args.epsilon)):
         Results[6, kk] = np.mean(H_SAD_com2)
         Results[7, kk] = np.mean(H_SAD_com3)
 
-        if args.check == 1:
-            os.makedirs(os.path.join(exp_path, "Results", "test_power", str(args.alpha)), exist_ok=True)
-            np.savetxt(os.path.join(exp_path, "Results", "test_power", str(args.alpha), file_name), Results, fmt='%.3f')
-        if args.check == 0:
-            os.makedirs(os.path.join(exp_path, "Results", "typeI_error", str(args.alpha)), exist_ok=True)
-            np.savetxt(os.path.join(exp_path, "Results", "typeI_error", str(args.alpha), file_name), Results, fmt='%.3f')
-        # break
+        # if args.check == 1:
+        #     os.makedirs(os.path.join(exp_path, "Results", "test_power", str(args.alpha)), exist_ok=True)
+        #     np.savetxt(os.path.join(exp_path, "Results", "test_power", str(args.alpha), file_name), Results, fmt='%.3f')
+        # if args.check == 0:
+        #     os.makedirs(os.path.join(exp_path, "Results", "typeI_error", str(args.alpha)), exist_ok=True)
+        #     np.savetxt(os.path.join(exp_path, "Results", "typeI_error", str(args.alpha), file_name), Results, fmt='%.3f')
+        break
     Final_results = np.zeros((Results.shape[0], 2))
     for j in range(Results.shape[0]):
         Final_results[j, 0] = np.mean(Results[j, :])
         Final_results[j, 1] = np.std(Results[j, :])/np.sqrt(args.n_exp)
 
-    if args.check == 1:
-        result_file = os.path.join(exp_path, "Results", "test_power", str(args.alpha), file_name)
-        with open(result_file, 'a') as f:
-            np.savetxt(f, Final_results, fmt='%.3f')
-        print(f"Detection of {args.ref}-ref {dataset_name} under {attk_method} with eps={args.epsilon[i]}, penalty={penalty} and Nrf={args.N_rf} and Nip={args.N_ip} is done")
-    if args.check == 0:
-        result_file = os.path.join(exp_path, "Results", "typeI_error", str(args.alpha), file_name)
-        with open(result_file, 'a') as f:
-            np.savetxt(f, Final_results, fmt='%.3f')
-        print(f"TypeI check of {args.ref}-ref {dataset_name} under {attk_method} with eps={args.epsilon[i]}, penalty={penalty} and Nrf={args.N_rf} and Nip={args.N_ip} is done")
+    # if args.check == 1:
+    #     result_file = os.path.join(exp_path, "Results", "test_power", str(args.alpha), file_name)
+    #     with open(result_file, 'a') as f:
+    #         np.savetxt(f, Final_results, fmt='%.3f')
+    #     print(f"Detection of {args.ref}-ref {dataset_name} under {attk_method} with eps={args.epsilon[i]}, penalty={penalty} and Nrf={args.N_rf} and Nip={args.N_ip} is done")
+    # if args.check == 0:
+    #     result_file = os.path.join(exp_path, "Results", "typeI_error", str(args.alpha), file_name)
+    #     with open(result_file, 'a') as f:
+    #         np.savetxt(f, Final_results, fmt='%.3f')
+    #     print(f"TypeI check of {args.ref}-ref {dataset_name} under {attk_method} with eps={args.epsilon[i]}, penalty={penalty} and Nrf={args.N_rf} and Nip={args.N_ip} is done")
 
     print("EPS-AD: {:.3f} ± {:.3f}".format(Final_results[0, 0], Final_results[0, 1]))
     print("SAMMD: {:.3f} ± {:.3f}".format(Final_results[1, 0], Final_results[1, 1]))
@@ -160,4 +160,4 @@ for i in range(len(args.epsilon)):
     print("SAD-com1: {:.3f} ± {:.3f}".format(Final_results[5, 0], Final_results[5, 1]))
     print("SAD-com2: {:.3f} ± {:.3f}".format(Final_results[6, 0], Final_results[6, 1]))
     print("SAD-com3: {:.3f} ± {:.3f}".format(Final_results[7, 0], Final_results[7, 1]))
-    # break
+    break

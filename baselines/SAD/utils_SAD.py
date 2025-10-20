@@ -254,7 +254,7 @@ def mmd_permutation_test4(Z, n_samples, n_per=100, kernel="log_rbf", tol=1e-6):
         for j in range(i, Z.size(0)):
             if kernel == "log_rbf":
                 log_Zj = log_cov(Z[j], tol)
-                # sigma = torch.median(torch_distance(log_Zi, log_Zj, norm=2, is_squared=True)) #XUNYE: this may works, unsure
+                sigma = torch.median(torch_distance(log_Zi, log_Zj, norm=2, is_squared=True)) #XUNYE: this may works, unsure
                 kij = torch.exp(-torch.norm(log_Zi - log_Zj)**2 / (2 * sigma **2))
             elif kernel == "airm":
                 C121 = inv_sqrt_Zi @ Z[j] @ inv_sqrt_Zi #XUNYE: not identity matrix even if Z[i] == Z[j]
